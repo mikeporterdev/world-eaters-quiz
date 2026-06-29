@@ -207,6 +207,12 @@
   .wrong { background: var(--red-bg); border: 1px solid var(--red); color: #f6b4ac; }
   .wrong .yours { text-decoration: line-through; opacity: .7; font-weight: 500; }
   .wrong .actual { display: block; font-size: .95rem; }
+  /* keyword results sit inline with the .kw chips, so match their sizing */
+  .result-block.kw-result {
+    min-width: 0; padding: 1px 5px; font-size: .6rem; line-height: 1.5;
+    text-transform: uppercase; letter-spacing: .5px; border-radius: 4px;
+  }
+  .result-block.kw-result .actual { display: inline; font-size: .6rem; }
   /* buttons */
   .controls { display: flex; gap: 12px; margin-top: 22px; flex-wrap: wrap; }
   button {
@@ -644,7 +650,7 @@ function onSkip(){
 // Correct guess: replace input with a locked green block.
 function lockCorrect(inp, actual){
   const span = document.createElement('span');
-  span.className = 'result-block correct';
+  span.className = 'result-block correct' + (inp.tagName === 'SELECT' ? ' kw-result' : '');
   span.textContent = actual;
   inp.parentNode.replaceChild(span, inp);
 }
@@ -669,7 +675,7 @@ function revealAnswer(inp, actual){
   const hint = wrap.querySelector('.hint');
   if (hint) hint.remove();
   const span = document.createElement('span');
-  span.className = 'result-block wrong';
+  span.className = 'result-block wrong' + (inp.tagName === 'SELECT' ? ' kw-result' : '');
   span.innerHTML = '<span class="actual">'+escapeHtml(actual)+'</span>';
   inp.parentNode.replaceChild(span, inp);
 }
