@@ -1,4 +1,10 @@
 <!DOCTYPE html>
+<!--
+  GENERATED FILE — do not edit directly. Edits here are overwritten on rebuild.
+  Source script: datasources/scripts/build-we-quiz.js
+  Rebuild with:  node scripts/build-we-quiz.js   (run from the datasources repo root)
+  This is the deployed copy (world-eaters-quiz/index.html) served via GitHub Pages.
+-->
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -68,6 +74,29 @@
   }
   .unit.on { color: var(--text); }
   .unit.on .box { background: var(--blood); border-color: var(--blood-bright); color: #fff; }
+  .unit .uname { flex: 1 1 auto; }
+  /* per-unit weapon checklist */
+  .wpn-caret {
+    flex: 0 0 auto; background: transparent; border: none; color: var(--muted);
+    cursor: pointer; font-size: .8rem; padding: 2px 4px; line-height: 1;
+    transition: transform .1s;
+  }
+  .wpn-caret:hover { color: var(--brass); }
+  .wpn-caret.open { transform: rotate(90deg); color: var(--brass); }
+  .wpn-list { list-style: none; margin: 1px 0 4px; padding: 0 0 0 22px; }
+  .wpn {
+    display: flex; align-items: center; gap: 6px; padding: 4px 4px;
+    border-radius: 5px; cursor: pointer; font-size: .75rem; color: var(--muted);
+    user-select: none;
+  }
+  .wpn:hover { background: var(--panel2); }
+  .wpn .box {
+    flex: 0 0 13px; width: 13px; height: 13px; border-radius: 3px;
+    border: 1px solid var(--line); display: flex; align-items: center;
+    justify-content: center; font-size: .6rem; color: transparent;
+  }
+  .wpn.on { color: var(--text); }
+  .wpn.on .box { background: var(--blood); border-color: var(--blood-bright); color: #fff; }
   .sb-toggle {
     position: absolute; left: 0; top: 0; background: var(--panel2);
     color: var(--brass); border: 1px solid var(--line); border-radius: 6px;
@@ -77,9 +106,25 @@
   .sb-toggle:hover { border-color: var(--brass); }
   .empty { text-align: center; color: var(--muted); padding: 40px 16px; font-size: 1rem; }
   header { text-align: center; margin-bottom: 18px; position: relative; }
+  .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
   @media (max-width: 760px) {
     .layout { flex-direction: column; }
-    .sidebar { position: static; flex-basis: auto; width: 100%; max-height: 300px; }
+    .sidebar { position: static; flex-basis: auto; width: 100%; max-height: 320px; }
+  }
+  @media (max-width: 520px) {
+    body { padding: 14px 8px 56px; }
+    header { padding: 0 40px; margin-bottom: 14px; }
+    h1 { font-size: 1.35rem; letter-spacing: 1px; }
+    .sub { font-size: .78rem; }
+    .card { padding: 14px 12px 16px; }
+    .dsname { font-size: 1.15rem; }
+    table { font-size: .82rem; }
+    th, td { padding: 5px 4px; }
+    .statcell { min-width: 54px; }
+    .statcell .val { font-size: 1.1rem; }
+    .controls { gap: 8px; margin-top: 18px; }
+    button { padding: 11px 8px; font-size: .82rem; letter-spacing: .5px; }
+    .sb-toggle { top: -2px; }
   }
   h1 {
     font-size: 1.9rem; margin: 0;
@@ -236,6 +281,7 @@ function buildFields(ds){
   });
   if (ds.invul) fields.push({ loc:"stat", lbl:"INV", key:"invul", value:ds.invul, id:"stat-invul" });
   ds.weapons.forEach((w, wi)=>{
+    if (!isWeaponEnabled(ds.name, wi)) return;
     [["A","a"],["SKILL","skill"],["S","s"],["AP","ap"],["D","d"]].forEach(([lbl,key])=>{
       if (w[key] !== "") fields.push({ loc:"weapon", wi, lbl, key, value:w[key], id:"wpn-"+wi+"-"+key });
     });
@@ -259,6 +305,34 @@ function saveDisabled(){
   try { localStorage.setItem(LS_KEY, JSON.stringify([...disabled])); } catch(e){}
 }
 function isEnabled(name){ return !disabled.has(name); }
+
+// ---- Per-weapon enable/disable (persisted as { unitName: [weaponIndex, ...] }) ----
+// Weapons are keyed by their index in the datasheet's weapons array, which is
+// stable for a given build, so duplicate weapon names stay distinct.
+const LS_WPN_KEY = 'worldEatersQuizDisabledWeapons';
+let disabledWeapons = loadDisabledWeapons();
+const expanded = new Set(); // which units have their weapon list open (in-memory only)
+
+function loadDisabledWeapons(){
+  try {
+    const obj = JSON.parse(localStorage.getItem(LS_WPN_KEY) || '{}');
+    const out = {};
+    for (const k in obj) out[k] = new Set(obj[k]);
+    return out;
+  } catch(e){ return {}; }
+}
+function saveDisabledWeapons(){
+  try {
+    const obj = {};
+    for (const k in disabledWeapons) obj[k] = [...disabledWeapons[k]];
+    localStorage.setItem(LS_WPN_KEY, JSON.stringify(obj));
+  } catch(e){}
+}
+function isWeaponEnabled(name, wi){
+  const s = disabledWeapons[name];
+  return !(s && s.has(wi));
+}
+
 // Pool of enabled units that have enough fields to quiz.
 function pool(){ return DATA.filter(d => isEnabled(d.name) && buildFields(d).length >= 3); }
 
@@ -293,12 +367,51 @@ function renderSidebar(){
   const list = document.getElementById('unitList');
   list.innerHTML = DATA.map(d => {
     const on = isEnabled(d.name);
-    return '<li class="unit' + (on ? ' on' : '') + '" data-name="' + escapeAttr(d.name) + '">' +
-      '<span class="box">&#10003;</span><span class="uname">' + escapeHtml(d.name) + '</span></li>';
+    const name = escapeAttr(d.name);
+    const isExp = expanded.has(d.name);
+    const caret = d.weapons.length
+      ? '<button type="button" class="wpn-caret' + (isExp ? ' open' : '') + '" data-name="' + name +
+        '" aria-label="Toggle weapon list">&#9656;</button>'
+      : '';
+    const wpnList = d.weapons.length
+      ? '<ul class="wpn-list' + (isExp ? '' : ' hidden') + '">' +
+        d.weapons.map((w, wi) => {
+          const won = isWeaponEnabled(d.name, wi);
+          return '<li class="wpn' + (won ? ' on' : '') + '" data-name="' + name + '" data-wi="' + wi + '">' +
+            '<span class="box">&#10003;</span><span class="wpn-name">' + escapeHtml(w.name) + '</span></li>';
+        }).join('') + '</ul>'
+      : '';
+    return '<li class="unit-item">' +
+      '<div class="unit' + (on ? ' on' : '') + '" data-name="' + name + '">' +
+        '<span class="box">&#10003;</span><span class="uname">' + escapeHtml(d.name) + '</span>' + caret +
+      '</div>' + wpnList +
+    '</li>';
   }).join('');
-  list.querySelectorAll('.unit').forEach(li => {
-    li.addEventListener('click', () => toggleUnit(li.getAttribute('data-name')));
+  list.querySelectorAll('.unit').forEach(div => {
+    div.addEventListener('click', () => toggleUnit(div.getAttribute('data-name')));
   });
+  list.querySelectorAll('.wpn-caret').forEach(btn => {
+    btn.addEventListener('click', (e) => { e.stopPropagation(); toggleExpand(btn.getAttribute('data-name')); });
+  });
+  list.querySelectorAll('.wpn').forEach(li => {
+    li.addEventListener('click', () => toggleWeapon(li.getAttribute('data-name'), parseInt(li.getAttribute('data-wi'), 10)));
+  });
+}
+
+function toggleExpand(name){
+  if (expanded.has(name)) expanded.delete(name); else expanded.add(name);
+  renderSidebar();
+}
+
+function toggleWeapon(name, wi){
+  const s = disabledWeapons[name] || (disabledWeapons[name] = new Set());
+  if (s.has(wi)) s.delete(wi); else s.add(wi);
+  if (!s.size) delete disabledWeapons[name];
+  saveDisabledWeapons();
+  renderSidebar();
+  // Reflect the change immediately: re-roll only if the current card is this unit.
+  if (current && current.ds.name === name) newQuestion();
+  else syncQuestion();
 }
 
 // After any change to the enabled set, keep the current question consistent.
@@ -345,6 +458,7 @@ function render(){
     const rows = [];
     ds.weapons.forEach((w, wi)=>{
       if (w.kind !== kind) return;
+      if (!isWeaponEnabled(ds.name, wi)) return;
       const cells = ["a","skill","s","ap","d"].map((key)=>
         '<td>'+cell(isBlank("wpn-"+wi+"-"+key), w[key], "wpn-"+wi+"-"+key)+'</td>'
       ).join('');
@@ -364,10 +478,10 @@ function render(){
     });
     if (!rows.length) return '';
     return '<div class="section-label">'+label+'</div>'+
-      '<table class="wtable '+kind+'"><thead><tr>'+
+      '<div class="table-wrap"><table class="wtable '+kind+'"><thead><tr>'+
         '<th class="wname" style="text-align:left">Weapon</th><th>Range</th>'+
         '<th>A</th><th>'+skillHdr+'</th><th>S</th><th>AP</th><th>D</th>'+
-      '</tr></thead><tbody>'+rows.join('')+'</tbody></table>';
+      '</tr></thead><tbody>'+rows.join('')+'</tbody></table></div>';
   }
 
   const wHtml = weaponTable("ranged", "Ranged Weapons", "BS") +
